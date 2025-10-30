@@ -1,5 +1,5 @@
 # ---------------------------------------------------------
-# CodeRabbit AI Review Config for Frontend (React/Vite)
+# CodeRabbit AI Review Config for React Frontend
 # Author: Anshul (AllCognix Media Studios)
 # ---------------------------------------------------------
 
@@ -13,9 +13,10 @@ review:
     - performance
     - maintainability
     - security
+    - accessibility
 
   comment_style: friendly
-  max_comments: 30   # limit number of inline comments per PR
+  max_comments: 30
 
   exclude_paths:
     - node_modules/**
@@ -31,7 +32,7 @@ rules:
   javascript:
     prefer_const: true
     avoid_console: true
-    no_direct_dom_access: true
+    enforce_strict_mode: true
   react:
     hooks_best_practices: true
     check_missing_dependencies: true
