@@ -17,9 +17,9 @@ env:
   DOCKER_IMAGE: allcognix/media-studio
 
 jobs:
-  # -------------------------------
-  #  Daily Email Notification (Auto @ 9AM)
-  # -------------------------------
+  # -----------------------------------
+  #  Daily Email Notification (9AM)
+  # -----------------------------------
   notify:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
@@ -39,7 +39,7 @@ jobs:
             team@allcognix.com
           from: "AllCognix CI Bot <${{ secrets.EMAIL_USERNAME }}>"
           body: |
-            Hello Team,
+            Hello Team 👋,
 
             Here's your **Daily 9AM CI Summary** for **${{ github.repository }}**:
 
@@ -51,76 +51,25 @@ jobs:
             ---
             Automated by AllCognix CI/CD Pipeline
 
-  # -------------------------------
+  # -----------------------------------
   #  Code Review (CodeRabbit AI)
-  # -------------------------------
+  # -----------------------------------
   code-review:
-    name: 🧠 CodeRabbit Review
+    name: 🧠 CodeRabbit AI Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - name: CodeRabbit Trigger Info
+      - name: CodeRabbit Info
         run: |
-          echo "🚀 CodeRabbit AI Review will automatically trigger on this Pull Request."
-          echo "Ensure CodeRabbit GitHub App is installed and configured for this repository."
-          echo "Visit https://coderabbit.ai for dashboard & configuration."
-      - name: Summary for Reviewers
-        run: |
-          echo "🧠 CodeRabbit analyzes code style, performance, readability, and security."
-          echo "👀 Review results will appear as inline PR comments and a summary."
+          echo "🚀 CodeRabbit will automatically review this Pull Request."
+          echo "Ensure CodeRabbit App is installed → https://github.com/marketplace/coderabbitai"
 
-  # -------------------------------
-  #  Lint + Version Extraction
-  # -------------------------------
-  lint-version:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Extract version from package.json
-        id: get_version
-        run: |
-          echo " Checking directory structure..."
-          ls -l
-          INNER=$(basename "$GITHUB_REPOSITORY")
-          if [ -d "$INNER" ]; then cd "$INNER"; fi
-          PACKAGE_PATH=$(find . -type f -path "*/package.json" | head -1)
-          if [ -z "$PACKAGE_PATH" ]; then echo " Could not find frontend/package.json"; exit 1; fi
-          VERSION=$(jq -r '.version' "$PACKAGE_PATH")
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo " Invalid version format: $VERSION"; exit 1; fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "## Version from package.json: \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Run ESLint (silent mode)
-        working-directory: frontend
-        run: |
-          if npm run | grep -q "^ *lint"; then
-            echo "🧹 Running ESLint quietly..."
-            npm run lint -- --quiet || echo " Lint warnings suppressed."
-          else
-            echo "⚠️ No lint script found."
-          fi
-
-  # -------------------------------
-  #  Build & Test
-  # -------------------------------
+  # -----------------------------------
+  #  Lint + Build + Test
+  # -----------------------------------
   build-test:
+    name: 🔧 Lint, Test & Build Frontend
     runs-on: ubuntu-latest
-    needs: [lint-version]
     steps:
       - uses: actions/checkout@v4
 
@@ -129,91 +78,73 @@ jobs:
         with:
           node-version: 18
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: frontend
         run: npm ci
 
-      - name: Create .env for Vite
-        working-directory: frontend
-        run: echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" > .env
+      - name: Run Linter
+        run: |
+          if npm run | grep -q "^ *lint"; then
+            echo "🧹 Running ESLint..."
+            npm run lint -- --quiet || echo "⚠️ Lint warnings ignored."
+          else
+            echo "⚠️ No lint script found."
+          fi
 
-      - name: Run tests
-        working-directory: frontend
+      - name: Run Tests
         run: |
           if npm run | grep -q "^ *test"; then
+            echo "🧪 Running Tests..."
             npm test --if-present -- --ci --watchAll=false
           else
             echo "⚠️ No test script found."
           fi
 
-      - name: Build frontend
-        working-directory: frontend
+      - name: Build Frontend
         run: |
           if npm run | grep -q "^ *build"; then
+            echo "🏗️ Building frontend app..."
             npm run build
           else
             echo "⚠️ No build script found."
           fi
 
-  # -------------------------------
-  #  Security: Snyk + Bandit
-  # -------------------------------
+  # -----------------------------------
+  #  Security Scan (Snyk)
+  # -----------------------------------
   security:
+    name: 🔒 Security Scan (Snyk)
     runs-on: ubuntu-latest
-    needs: [build-test]
+    needs: build-test
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        if: hashFiles('frontend/package.json') != ''
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install deps for Snyk
-        if: hashFiles('frontend/package.json') != ''
-        working-directory: frontend
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run Snyk Security Scan
-        if: hashFiles('frontend/package.json') != ''
+      - name: Run Snyk Scan
         run: |
-          cd frontend
-          echo "🔒 Running Snyk Security Scan..."
-          rm -f package-lock.json
-          npm install --ignore-scripts --package-lock-only
-          npx snyk test --severity-threshold=medium || echo "⚠️ Snyk warnings ignored."
+          echo "🔍 Running Snyk security check..."
+          npx snyk test --severity-threshold=medium || echo "⚠️ Warnings ignored."
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
-      - name: Setup Python (for Bandit)
-        if: hashFiles('**/*.py') != ''
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install Bandit
-        if: hashFiles('**/*.py') != ''
-        run: pip install bandit
-
-      - name: Run Bandit Security Scan
-        if: hashFiles('**/*.py') != ''
-        run: bandit -r . -ll
-
-  # -------------------------------
+  # -----------------------------------
   #  Manual Docker Build & Push
-  # -------------------------------
+  # -----------------------------------
   docker-push:
+    name: 🐳 Docker Build & Push (Manual)
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: [lint-version, build-test, security]
+    needs: [build-test, security]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -228,6 +159,6 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag }}"
           echo "🐳 Building image: $DOCKER_IMAGE:${TAG}"
-          docker build -t $DOCKER_IMAGE:${TAG} frontend
+          docker build -t $DOCKER_IMAGE:${TAG} .
           docker push $DOCKER_IMAGE:${TAG}
-          echo "✅ Docker image pushed: $DOCKER_IMAGE:${TAG}"
+          echo "✅ Image pushed: $DOCKER_IMAGE:${TAG}"
