@@ -58,14 +58,14 @@ jobs:
   code-review:
     name: 🧠 CodeRabbit AI Review
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' # skip only during daily email
+    if: github.event_name != 'schedule' # skip only daily mail
     steps:
       - name: Display CodeRabbit Status
         run: |
           echo "🚀 CodeRabbit AI Review is enabled for this repository."
           echo "This job runs on all triggers (push, PR, manual)."
           echo "If this is a Pull Request, the AI will post review comments automatically."
-          echo "👉 Check https://app.coderabbit.ai for review status."
+          echo "👉 Check https://app.coderabbit.ai for real-time review logs."
 
   # -----------------------------------
   #  Lint + Build + Test
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Build Artifact
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: dist/
