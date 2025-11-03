@@ -3,42 +3,38 @@
 # Author: Anshul (AllCognix Media Studios)
 # ---------------------------------------------------------
 
-language: auto
+language: en-US
 
-review:
-  enable_summary: true
-  enable_inline_comments: true
-  focus_areas:
-    - readability
-    - performance
-    - maintainability
-    - security
-    - accessibility
+# Friendly, constructive tone + focus areas
+tone_instructions: |
+  Be friendly and constructive. Focus on readability, performance,
+  maintainability, security, and accessibility. Prefer concise suggestions
+  with concrete diffs/examples when possible.
 
-  comment_style: friendly
-  max_comments: 30
+reviews:
+  profile: chill                # or "assertive" if you want stricter
+  high_level_summary: true
+  review_status: true
+  commit_status: true
+  fail_commit_status: false     # don't fail the status if issues found
 
-  exclude_paths:
-    - node_modules/**
-    - dist/**
-    - build/**
-    - coverage/**
-    - public/**
-    - .github/**
-    - .vscode/**
-    - .husky/**
+  auto_review:
+    enabled: true               # auto-review PRs
+    drafts: false               # skip drafts (set true if you want)
 
-rules:
-  javascript:
-    prefer_const: true
-    avoid_console: true
-    enforce_strict_mode: true
-  react:
-    hooks_best_practices: true
-    check_missing_dependencies: true
-    enforce_component_naming: true
-    prevent_unused_states: true
+# File selection (exclude heavy/generated stuff)
+path_filters:
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - "coverage/**"
+    - "public/**"
+    - ".github/**"
+    - ".vscode/**"
+    - ".husky/**"
 
-labels:
-  reviewed_by_ai: true
-  label_name: "AI-Reviewed ✅"
+# Built-in tooling hooks CodeRabbit can run alongside reviews
+tools:
+  eslint:
+    enabled: true               # allow JS/TS lint hints during review
