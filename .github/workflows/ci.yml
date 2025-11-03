@@ -16,6 +16,13 @@ on:
 env:
   DOCKER_IMAGE: allcognix/media-studio
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # -----------------------------------
   #  Daily Email Notification (9AM)
@@ -44,36 +51,36 @@ jobs:
 
             Here's your **Daily 9AM CI Summary** for **${{ github.repository }}**:
 
-            🧹 Lint, Build, and Test checks running...
-            🤖 CodeRabbit AI Review active on all PRs.
-            🐳 Docker push available manually if required.
+            🧹 Lint, Build, and Test checks run sequentially on non-schedule triggers.
+            🤖 CodeRabbit AI Review active on PRs.
+            🐳 Manual Docker push available via workflow_dispatch.
             ⏰ Trigger Time: ${{ github.run_started_at }}
 
             ---
             Automated by AllCognix CI/CD Pipeline
 
   # -----------------------------------
-  #  Code Review (CodeRabbit AI)
+  # 1) Code Review (gate 1)
   # -----------------------------------
   code-review:
-    name: 🧠 CodeRabbit AI Review
+    name: "1️⃣ Code Review (CodeRabbit)"
     runs-on: ubuntu-latest
     if: github.event_name != 'schedule'
     steps:
       - name: Display CodeRabbit Status
         run: |
           echo "🚀 CodeRabbit AI Review is enabled for this repository."
-          echo "This job runs on all triggers (push, PR, manual)."
           echo "If this is a Pull Request, the AI will post review comments automatically."
           echo "👉 Check https://app.coderabbit.ai for real-time review logs."
 
   # -----------------------------------
-  #  Lint (separate job)
+  # 2) Lint (gate 2)
   # -----------------------------------
   lint:
-    name: 🧹 ESLint
+    name: "2️⃣ ESLint"
     runs-on: ubuntu-latest
     if: github.event_name != 'schedule'
+    needs: [code-review]
     steps:
       - uses: actions/checkout@v4
 
@@ -92,19 +99,19 @@ jobs:
         run: |
           if npm run | grep -q "^ *lint"; then
             echo "🧹 Running ESLint..."
-            # Fail on errors, ignore warnings
             npm run lint -- --quiet
           else
             echo "⚠️ No lint script found; skipping."
           fi
 
   # -----------------------------------
-  #  Test + Build (lint se separate)
+  # 3) Test + Build (gate 3)
   # -----------------------------------
   build-test:
-    name: 🔧 Test & Build Frontend
+    name: "3️⃣ Test & Build Frontend"
     runs-on: ubuntu-latest
-    needs: [code-review, lint]
+    if: github.event_name != 'schedule'
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
 
@@ -136,8 +143,8 @@ jobs:
             echo "⚠️ No build script found."
           fi
 
-      # Auto-detect and upload build output
       - name: Package & Upload Build Artifact
+        shell: bash
         run: |
           if [ -d "dist" ]; then
             echo "📦 Found dist folder. Packaging..."
@@ -149,18 +156,17 @@ jobs:
             echo "❌ No dist or build folder found!"
             exit 1
           fi
-        shell: bash
-
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: frontend-dist.tar.gz
+          if-no-files-found: error
 
   # -----------------------------------
-  #  Manual Docker Build & Push
+  # 4) Manual Docker Build & Push (gate 4)
   # -----------------------------------
   docker-push:
-    name: 🐳 Docker Build & Push (Manual)
+    name: "4️⃣ Docker Build & Push (Manual)"
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: [build-test]
@@ -191,6 +197,10 @@ jobs:
       - name: Build & Push Docker Image
         run: |
           TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "❌ Missing manual input 'tag'."
+            exit 1
+          fi
           echo "🐳 Building image: $DOCKER_IMAGE:${TAG}"
           docker build -t $DOCKER_IMAGE:${TAG} .
           docker push $DOCKER_IMAGE:${TAG}
