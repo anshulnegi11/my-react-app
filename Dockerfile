@@ -7,7 +7,7 @@ RUN apt update && \
     apt clean
 
 WORKDIR /var/www/html
-
+# delete html files
 RUN rm -rf /var/www/html/*
 
 # ✅ Copy compiled frontend (Vite uses 'dist', not 'build')
