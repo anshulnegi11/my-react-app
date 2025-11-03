@@ -114,12 +114,25 @@ jobs:
             echo "⚠️ No build script found."
           fi
 
-      - name: Upload Build Artifact
-        if: success()
-        uses: actions/upload-artifact@v4
+      # Auto-detect and upload build output
+      - name: Package & Upload Build Artifact
+        run: |
+          if [ -d "dist" ]; then
+            echo "📦 Found dist folder. Packaging..."
+            tar -czf frontend-dist.tar.gz dist
+          elif [ -d "build" ]; then
+            echo "📦 Found build folder. Packaging..."
+            tar -czf frontend-dist.tar.gz build
+          else
+            echo "❌ No dist or build folder found!"
+            exit 1
+          fi
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: dist/
+          path: frontend-dist.tar.gz
 
   # -----------------------------------
   #  Manual Docker Build & Push
@@ -136,7 +149,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
-          path: dist
+          path: .
+
+      - name: Extract Build Artifact
+        run: |
+          echo "📂 Extracting build artifact..."
+          tar -xzf frontend-dist.tar.gz
+          ls -R
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
