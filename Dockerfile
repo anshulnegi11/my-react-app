@@ -10,7 +10,8 @@ WORKDIR /var/www/html
 
 RUN rm -rf /var/www/html/*
 
-COPY build/ /var/www/html/
+# ✅ Copy compiled frontend (Vite uses 'dist', not 'build')
+COPY dist/ /var/www/html/
 
 EXPOSE 80
 
