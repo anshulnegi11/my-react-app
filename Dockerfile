@@ -9,7 +9,7 @@ RUN apt update && \
 WORKDIR /var/www/html
 
 RUN rm -rf /var/www/html/*
-
+#copy the build in html 
 COPY build/ /var/www/html/
 
 EXPOSE 80
