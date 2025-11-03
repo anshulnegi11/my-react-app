@@ -41,6 +41,13 @@ const AppLabel = styled.span`
   font-weight: bold;
 `;
 
+/**
+ * Root React component that manages city input and fetched weather state, and renders either the city input form or the weather display.
+ *
+ * The component holds `city` and `weather` state. It provides a `fetchWeather` handler that requests current weather for the configured city from the OpenWeatherMap API and updates the `weather` state; when both `city` and `weather` are present the weather view is shown, otherwise the city input view is shown.
+ *
+ * @returns {JSX.Element} The app's rendered UI element.
+ */
 function App() {
   const [city, updateCity] = useState();
   const [weather, updateWeather] = useState();
@@ -65,4 +72,3 @@ function App() {
 export default App;
 
 #testing
-
