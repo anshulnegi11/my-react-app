@@ -18,6 +18,8 @@ env:
 
 permissions:
   contents: read
+  security-events: write   # needed for SARIF uploads
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -105,13 +107,107 @@ jobs:
           fi
 
   # -----------------------------------
+  # 2.5) Snyk (Open Source + Snyk Code) - non-blocking
+  # -----------------------------------
+  snyk-app:
+    name: "🛡️ Snyk (Deps & Code)"
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps (for lockfile accuracy)
+        run: npm ci
+
+      - name: Setup Snyk CLI
+        uses: snyk/actions/setup@master
+
+      - name: Snyk Open Source (npm) → SARIF
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+        run: |
+          snyk test --all-projects --sarif-file-output=snyk-open-source.sarif || true
+
+      - name: Snyk Code (SAST) → SARIF
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+        run: |
+          snyk code test --sarif-file-output=snyk-code.sarif || true
+
+      - name: Upload Snyk SARIF (Deps)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-open-source.sarif
+          category: snyk-open-source
+
+      - name: Upload Snyk SARIF (Code)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
+
+  # -----------------------------------
+  # 2.6) Bandit (Python SAST) - only if Python exists
+  # -----------------------------------
+  bandit:
+    name: "🕵️ Bandit (Python)"
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Python code
+        id: detect
+        shell: bash
+        run: |
+          if git ls-files '*.py' | grep -q .; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Python
+        if: steps.detect.outputs.found == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        if: steps.detect.outputs.found == 'true'
+        run: pip install bandit
+
+      - name: Run Bandit → SARIF
+        if: steps.detect.outputs.found == 'true'
+        continue-on-error: true
+        run: |
+          bandit -r . -f sarif -o bandit.sarif || true
+
+      - name: Upload Bandit SARIF
+        if: steps.detect.outputs.found == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
+  # -----------------------------------
   # 3) Test + Build (gate 3)
   # -----------------------------------
   build-test:
     name: "3️⃣ Test & Build Frontend"
     runs-on: ubuntu-latest
     if: github.event_name != 'schedule'
-    needs: [lint]
+    needs: [snyk-app, bandit]
     steps:
       - uses: actions/checkout@v4
 
@@ -164,6 +260,7 @@ jobs:
 
   # -----------------------------------
   # 4) Manual Docker Build & Push (gate 4)
+  #    + Snyk Docker scan before push (non-blocking)
   # -----------------------------------
   docker-push:
     name: "4️⃣ Docker Build & Push (Manual)"
@@ -194,7 +291,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & Push Docker Image
+      - name: Build Docker image (local)
         run: |
           TAG="${{ github.event.inputs.tag }}"
           if [ -z "$TAG" ]; then
@@ -203,5 +300,22 @@ jobs:
           fi
           echo "🐳 Building image: $DOCKER_IMAGE:${TAG}"
           docker build -t $DOCKER_IMAGE:${TAG} .
-          docker push $DOCKER_IMAGE:${TAG}
-          echo "✅ Image pushed: $DOCKER_IMAGE:${TAG}"
+
+      - name: Snyk Container scan → SARIF
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+        run: |
+          echo "🔎 Snyk scanning local image before push..."
+          snyk container test "$DOCKER_IMAGE:${{ github.event.inputs.tag }}" --sarif-file-output=snyk-docker.sarif || true
+
+      - name: Upload Snyk SARIF (Docker)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-docker.sarif
+          category: snyk-docker
+
+      - name: Push Docker image
+        run: |
+          docker push $DOCKER_IMAGE:${{ github.event.inputs.tag }}
+          echo "✅ Image pushed: $DOCKER_IMAGE:${{ github.event.inputs.tag }}"
